@@ -1,0 +1,280 @@
+export component AppWindow inherits Window {
+    icon: @image-url("../d2g.png"); 
+    width: 700px;
+    height: 600px;
+    title: "D2G v2.0.0 - Universal Package Converter"; 
+    default-font-family: "Ubuntu";
+
+    in-out property <bool> is_dark: true;
+    in-out property <string> pkg_name: "";
+    in-out property <string> pkg_version: "";
+    in-out property <string> pkg_arch: "";
+    in-out property <string> pkg_deps: "";
+    in-out property <bool> has_metadata: false;
+    in-out property <string> status_message: "Ожидание файла...";
+    in-out property <string> selected_file_path: ""; 
+
+    callback select_file();
+    callback convert();
+    callback cancel();
+
+    property <color> bg_top: is_dark ? #020617 : #f0f9ff;
+    property <color> bg_bottom: is_dark ? #0f172a : #e0f2fe;
+    
+    property <color> glass_bg: is_dark ? #ffffff0d : #ffffff99; 
+    property <color> glass_border: is_dark ? #ffffff33 : #ffffffcc;
+    property <color> text_color: is_dark ? #e2e8f0 : #0f172a;
+    property <color> accent: is_dark ? #38bdf8 : #0284c7;
+    property <color> card_bg: is_dark ? #1e293b80 : #ffffffcc;
+
+    background: @linear-gradient(135deg, bg_top, bg_bottom);
+
+    VerticalLayout {
+        padding: 30px;
+        spacing: 20px;
+
+        // Header
+        HorizontalLayout {
+            alignment: space-between;
+            VerticalLayout {
+                spacing: 2px;
+                Text {
+                    text: "D2G"; 
+                    font-size: 28px;
+                    color: text_color;
+                    font-weight: 800;
+                }
+                Text {
+                    text: "Universal Package Converter v2.0.0";
+                    font-size: 13px;
+                    color: accent;
+                    font-weight: 600;
+                }
+            }
+            
+            Rectangle {
+                width: 120px; height: 38px;
+                background: glass_bg;
+                border-radius: 19px;
+                border-width: 1px;
+                border-color: glass_border;
+                
+                Text {
+                    text: is_dark ? "🌙 Dark" : "☀️ Light";
+                    color: text_color;
+                    font-size: 15px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                TouchArea {
+                    clicked => { is_dark = !is_dark; }
+                    mouse-cursor: pointer;
+                }
+            }
+        }
+
+        // Main Glass Card
+        Rectangle {
+            background: glass_bg;
+            border-radius: 20px;
+            border-width: 1px;
+            border-color: glass_border;
+            drop-shadow-blur: 25px;
+            drop-shadow-color: is_dark ? #00000080 : #38bdf820;
+
+            VerticalLayout {
+                padding: 24px;
+                spacing: 20px;
+
+                if !has_metadata : Rectangle {
+                    height: 280px;
+                    border-radius: 16px;
+                    background: touch.has-hover ? accent.with-alpha(0.12) : accent.with-alpha(0.06);
+                    border-width: 2px;
+                    border-color: touch.has-hover ? accent : accent.with-alpha(0.3);
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 12px;
+
+                        Text {
+                            text: "📦";
+                            font-size: 52px;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            text: "Выберите пакет для конвертации";
+                            color: text_color;
+                            font-size: 20px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                        }
+                        Text {
+                            text: "Поддерживаются .deb, .rpm, .pkg.tar.zst, .AppImage";
+                            color: text_color.with-alpha(0.6);
+                            font-size: 14px;
+                            horizontal-alignment: center;
+                        }
+                    }
+
+                    touch := TouchArea {
+                        clicked => { select_file(); }
+                        mouse-cursor: pointer;
+                    }
+                }
+
+                if has_metadata : VerticalLayout {
+                    spacing: 16px;
+                    
+                    // Package Details Header
+                    HorizontalLayout {
+                        spacing: 12px;
+                        alignment: start;
+                        
+                        Text { 
+                            text: pkg_name; 
+                            color: text_color; 
+                            font-size: 22px; 
+                            font-weight: 800; 
+                        }
+
+                        // Version badge
+                        Rectangle {
+                            background: accent.with-alpha(0.2);
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: accent.with-alpha(0.4);
+                            height: 26px;
+                            
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                Text {
+                                    text: "v" + pkg_version;
+                                    color: accent;
+                                    font-size: 13px;
+                                    font-weight: 700;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        // Arch badge
+                        Rectangle {
+                            background: glass_bg;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: glass_border;
+                            height: 26px;
+                            
+                            HorizontalLayout {
+                                padding-left: 8px;
+                                padding-right: 8px;
+                                Text {
+                                    text: pkg_arch;
+                                    color: text_color.with-alpha(0.8);
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+
+                    // Dependencies Box
+                    VerticalLayout {
+                        spacing: 6px;
+                        Text { 
+                            text: "Зависимости (после очистки):"; 
+                            color: text_color.with-alpha(0.7); 
+                            font-size: 13px; 
+                            font-weight: 600; 
+                        }
+                        
+                        Rectangle {
+                            height: 120px;
+                            background: card_bg;
+                            border-radius: 12px;
+                            border-width: 1px;
+                            border-color: glass_border;
+                            
+                            Flickable {
+                                viewport-height: deps_layout.preferred-height;
+                                
+                                deps_layout := VerticalLayout {
+                                    padding: 10px;
+                                    deps_text := Text {
+                                        text: pkg_deps != "" ? pkg_deps : "Нет внешних зависимостей"; 
+                                        color: text_color.with-alpha(0.9); 
+                                        font-size: 13px; 
+                                        font-family: "monospace";
+                                        wrap: word-wrap; 
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Action buttons
+                    HorizontalLayout {
+                        spacing: 16px;
+                        alignment: center;
+                        padding-top: 10px;
+
+                        Rectangle {
+                            width: 150px; height: 46px;
+                            border-radius: 23px;
+                            background: btn_cancel.has-hover ? #ef4444.with-alpha(0.25) : #ef4444.with-alpha(0.12);
+                            border-width: 1px;
+                            border-color: #ef4444.with-alpha(0.6);
+                            
+                            Text { 
+                                text: "Отмена"; 
+                                color: #ef4444; 
+                                font-size: 15px; 
+                                font-weight: 700; 
+                                horizontal-alignment: center; 
+                                vertical-alignment: center; 
+                            }
+                            btn_cancel := TouchArea { 
+                                clicked => { cancel(); } 
+                                mouse-cursor: pointer; 
+                            }
+                        }
+
+                        Rectangle {
+                            width: 180px; height: 46px;
+                            border-radius: 23px;
+                            background: btn_conv.has-hover ? #10b981 : #10b981.with-alpha(0.85);
+                            drop-shadow-blur: 15px;
+                            drop-shadow-color: #10b98180;
+                            
+                            Text { 
+                                text: "Собрать .gpkg"; 
+                                color: #ffffff; 
+                                font-size: 15px; 
+                                font-weight: 800; 
+                                horizontal-alignment: center; 
+                                vertical-alignment: center; 
+                            }
+                            btn_conv := TouchArea { 
+                                clicked => { convert(); } 
+                                mouse-cursor: pointer; 
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Status bar
+        Text {
+            text: status_message;
+            color: text_color.with-alpha(0.6);
+            font-size: 13px;
+            horizontal-alignment: center;
+            vertical-alignment: bottom;
+        }
+    }
+}
