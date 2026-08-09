@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=deb2gpkg
+Comment=Конвертер пакетов Debian (.deb) в формат G OS (.gpkg)
+Exec=d2g
+Icon=d2g
+Terminal=false
+Type=Application
+Categories=System;Utility;
+MimeType=application/vnd.debian.binary-package;

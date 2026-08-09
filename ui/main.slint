@@ -1,0 +1,169 @@
+import { Button, LineEdit, VerticalBox } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    icon: @image-url("../d2g.png"); 
+    width: 650px;
+    height: 550px;
+    title: "D2G - Liquid Glass Edition"; 
+    
+    in-out property <bool> is_dark: true;
+    in-out property <string> pkg_name: "";
+    in-out property <string> pkg_version: "";
+    in-out property <string> pkg_arch: "";
+    in-out property <string> pkg_deps: "";
+    in-out property <bool> has_metadata: false;
+    in-out property <string> status_message: "Ожидание файла...";
+    in-out property <string> selected_file_path: ""; 
+
+    callback select_file();
+    callback convert();
+    callback cancel();
+
+    property <color> bg_top: is_dark ? #020617 : #f0f9ff;
+    property <color> bg_bottom: is_dark ? #0f172a : #e0f2fe;
+    
+    property <color> glass_bg: is_dark ? #ffffff0d : #ffffff99; 
+    property <color> glass_border: is_dark ? #ffffff33 : #ffffffcc;
+    property <color> text_color: is_dark ? #e2e8f0 : #0f172a;
+    property <color> accent: is_dark ? #38bdf8 : #0284c7;
+
+    background: @linear-gradient(135deg, bg_top, bg_bottom);
+
+    VerticalLayout {
+        padding: 30px;
+        spacing: 20px;
+
+        HorizontalLayout {
+            alignment: space-between;
+            Text {
+                text: "D2G"; 
+                font-size: 28px;
+                color: text_color;
+                font-weight: 800;
+                vertical-alignment: center;
+            }
+            
+            Rectangle {
+                width: 130px; height: 40px;
+                background: glass_bg;
+                border-radius: 20px;
+                border-width: 1px;
+                border-color: glass_border;
+                
+                Text {
+                    text: is_dark ? "🌙 Dark" : "☀️ Light";
+                    color: text_color;
+                    font-size: 16px;
+                    font-weight: 600;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+                TouchArea {
+                    clicked => { is_dark = !is_dark; }
+                    mouse-cursor: pointer;
+                }
+            }
+        }
+
+        Rectangle {
+            background: glass_bg;
+            border-radius: 20px;
+            border-width: 1px;
+            border-color: glass_border;
+            drop-shadow-blur: 20px;
+            drop-shadow-color: is_dark ? #00000080 : #38bdf833;
+
+            VerticalLayout {
+                padding: 30px;
+                spacing: 20px;
+
+                if !has_metadata : Rectangle {
+                    height: 80px;
+                    border-radius: 15px;
+                    background: accent.with-alpha(0.15);
+                    border-width: 1px;
+                    border-color: accent;
+                    
+                    Text {
+                        text: "📥 Выбрать .deb пакет";
+                        color: text_color;
+                        font-size: 20px;
+                        font-weight: 700;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+                    TouchArea {
+                        clicked => { select_file(); }
+                        mouse-cursor: pointer;
+                    }
+                }
+
+                if has_metadata : VerticalLayout {
+                    spacing: 12px;
+                    
+                    Text { text: "📦 Пакет: " + pkg_name; color: text_color; font-size: 18px; font-weight: 600; }
+                    Text { text: "🔖 Версия: " + pkg_version; color: text_color; font-size: 16px; }
+                    Text { text: "⚙️ Архитектура: " + pkg_arch; color: text_color; font-size: 16px; }
+                    
+                    Rectangle {
+                        background: glass_bg;
+                        border-radius: 10px;
+                        VerticalLayout {
+                            padding: 10px;
+                            Text { 
+                                text: "🔗 Зависимости:\n" + pkg_deps; 
+                                color: text_color.with-alpha(0.8); 
+                                font-size: 14px; 
+                                wrap: word-wrap; 
+                            }
+                        }
+                    }
+
+                    Rectangle { height: 10px; }
+                    
+                    Text {
+                        text: "Сделать GPKG?";
+                        color: accent;
+                        font-size: 22px;
+                        font-weight: 800;
+                        horizontal-alignment: center;
+                    }
+
+                    HorizontalLayout {
+                        spacing: 20px;
+                        alignment: center;
+                        padding-top: 10px;
+
+                        Rectangle {
+                            width: 140px; height: 45px;
+                            border-radius: 22px;
+                            background: #ef4444.with-alpha(0.15);
+                            border-width: 1px;
+                            border-color: #ef4444;
+                            Text { text: "Отмена"; color: #ef4444; font-size: 16px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                            TouchArea { clicked => { cancel(); } mouse-cursor: pointer; }
+                        }
+
+                        Rectangle {
+                            width: 140px; height: 45px;
+                            border-radius: 22px;
+                            background: #10b981.with-alpha(0.15);
+                            border-width: 1px;
+                            border-color: #10b981;
+                            Text { text: "Да, создать"; color: #10b981; font-size: 16px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+                            TouchArea { clicked => { convert(); } mouse-cursor: pointer; }
+                        }
+                    }
+                }
+            }
+        }
+
+        Text {
+            text: status_message;
+            color: text_color.with-alpha(0.6);
+            font-size: 14px;
+            horizontal-alignment: center;
+            vertical-alignment: bottom;
+        }
+    }
+}
