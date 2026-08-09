@@ -55,7 +55,3 @@ The project relies on the following core libraries and frameworks:
 * **Диалоги файлов:** `rfd`[cite: 7, 8]
 
 ---
-
-   ```bash
-   git clone [https://github.com/AdrescorGiti/deb2gpkg.git](https://github.com/AdrescorGiti/deb2gpkg.git)
-   cd deb2gpkg
