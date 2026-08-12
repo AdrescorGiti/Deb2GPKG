@@ -2,23 +2,28 @@ use anyhow::{Context, Result};
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::Path;
-use crate::manifest::{self, GpkgManifest};
+use crate::manifest::{self, GpkgManifest, HookSet};
 use crate::unpacker::PackageUnpacker;
 
 pub struct DebUnpacker;
 
 impl PackageUnpacker for DebUnpacker {
     fn unpack(&self, archive_path: &Path, staging_dir: &Path) -> Result<GpkgManifest> {
-        let control_raw = unpack_deb(archive_path, staging_dir)?;
-        manifest::parse_control(&control_raw)
+        let (control_raw, hooks) = unpack_deb(archive_path, staging_dir)?;
+        let mut manifest = manifest::parse_control(&control_raw)?;
+        manifest.hooks = hooks;
+        Ok(manifest)
     }
 }
 
-pub fn unpack_deb(deb_path: &Path, staging: &Path) -> Result<String> {
+/// Extract a `.deb` ar archive into `staging/data` (payload) and `staging/hooks`
+/// (lifecycle scripts). Returns the raw `control` file text and the parsed hooks.
+pub fn unpack_deb(deb_path: &Path, staging: &Path) -> Result<(String, HookSet)> {
     let file = File::open(deb_path).context("Cannot open .deb file")?;
     let mut archive = ar::Archive::new(file);
 
     let mut control_content = String::new();
+    let mut hooks = HookSet::default();
 
     while let Some(entry_result) = archive.next_entry() {
         let mut entry = entry_result.context("Failed to read ar entry")?;
@@ -26,7 +31,11 @@ pub fn unpack_deb(deb_path: &Path, staging: &Path) -> Result<String> {
 
         if identifier.starts_with("control.tar") {
             let mut tar = get_tar_decoder(&identifier, &mut entry)?;
+            // Preserve mode/uid/gid/symlinks — critical for 1:1 parity.
+            tar.set_preserve_permissions(true);
             let control_stage = staging.join("DEBIAN");
+            fs::create_dir_all(&control_stage)?;
+            
             tar.unpack(&control_stage).context("Failed to unpack control.tar")?;
 
             let control_file = control_stage.join("control");
@@ -34,10 +43,11 @@ pub fn unpack_deb(deb_path: &Path, staging: &Path) -> Result<String> {
                 control_content = fs::read_to_string(&control_file)?;
             }
 
-            setup_hooks(&control_stage, staging)?;
+            hooks = collect_hooks(&control_stage, staging)?;
             fs::remove_dir_all(&control_stage).ok();
         } else if identifier.starts_with("data.tar") {
             let mut tar = get_tar_decoder(&identifier, &mut entry)?;
+            tar.set_preserve_permissions(true);
             let data_stage = staging.join("data");
             fs::create_dir_all(&data_stage)?;
             tar.unpack(&data_stage).context("Failed to unpack data.tar")?;
@@ -48,9 +58,10 @@ pub fn unpack_deb(deb_path: &Path, staging: &Path) -> Result<String> {
         anyhow::bail!("control file not found in the archive");
     }
 
-    Ok(control_content)
+    Ok((control_content, hooks))
 }
 
+/// Build the decoder stack for a `control.tar.*` / `data.tar.*` member of a `.deb`.
 pub fn get_tar_decoder<'a>(
     identifier: &str,
     reader: impl Read + 'a,
@@ -67,18 +78,33 @@ pub fn get_tar_decoder<'a>(
         anyhow::bail!("Unsupported compression format: {}", identifier);
     };
 
-    Ok(tar::Archive::new(decoder))
+    let mut archive = tar::Archive::new(decoder);
+    archive.set_preserve_permissions(true);
+    Ok(archive)
 }
 
-fn setup_hooks(control_dir: &Path, staging: &Path) -> Result<()> {
+/// Read the four standard Debian maintainer scripts into a `HookSet` and also
+/// copy them into `staging/hooks` so the builder can ship them verbatim.
+fn collect_hooks(control_dir: &Path, staging: &Path) -> Result<HookSet> {
     let hooks_dir = staging.join("hooks");
     fs::create_dir_all(&hooks_dir)?;
 
-    for hook_name in &["preinst", "postinst", "prerm", "postrm"] {
-        let hook_path = control_dir.join(hook_name);
+    let mut set = HookSet::default();
+
+    for (name, slot) in [
+        ("preinst", &mut set.preinst),
+        ("postinst", &mut set.postinst),
+        ("prerm", &mut set.prerm),
+        ("postrm", &mut set.postrm),
+    ] {
+        let hook_path = control_dir.join(name);
         if hook_path.exists() {
-            fs::copy(&hook_path, hooks_dir.join(hook_name))?;
+            let content = fs::read(&hook_path)
+                .with_context(|| format!("Failed to read hook {name}"))?;
+            fs::copy(&hook_path, hooks_dir.join(name))?;
+            *slot = Some(String::from_utf8_lossy(&content).into_owned());
         }
     }
-    Ok(())
+
+    Ok(set)
 }

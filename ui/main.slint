@@ -2,7 +2,7 @@ export component AppWindow inherits Window {
     icon: @image-url("../d2g.png"); 
     width: 700px;
     height: 600px;
-    title: "D2G v2.0.0 - Universal Package Converter"; 
+    title: "D2G v2.0.0 - Debian Package Converter"; 
     default-font-family: "Ubuntu";
 
     in-out property <bool> is_dark: true;
@@ -45,7 +45,7 @@ export component AppWindow inherits Window {
                     font-weight: 800;
                 }
                 Text {
-                    text: "Universal Package Converter v2.0.0";
+                    text: "Debian Package Converter v2.0.0";
                     font-size: 13px;
                     color: accent;
                     font-weight: 600;
@@ -111,7 +111,7 @@ export component AppWindow inherits Window {
                             horizontal-alignment: center;
                         }
                         Text {
-                            text: "Поддерживаются .deb, .rpm, .pkg.tar.zst, .AppImage";
+                            text: "Поддерживаются только .deb пакеты";
                             color: text_color.with-alpha(0.6);
                             font-size: 14px;
                             horizontal-alignment: center;

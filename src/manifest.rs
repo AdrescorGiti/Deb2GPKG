@@ -5,7 +5,8 @@ use std::fs::File;
 use std::io::Write;
 use std::path::Path;
 
-#[derive(Debug, Serialize, Deserialize)]
+/// Canonical GPKGM manifest structure.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GpkgManifest {
     pub name: String,
     pub version: String,
@@ -17,48 +18,92 @@ pub struct GpkgManifest {
     pub exec_binary: String,
     #[serde(default)]
     pub installed_files: Vec<String>,
+    #[serde(default)]
+    pub hooks: HookSet,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub github: Option<String>,
 }
 
-pub fn parse_control(raw: &str) -> Result<GpkgManifest> {
-    let mut map: HashMap<String, String> = HashMap::new();
-    let mut current_key = String::new();
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct HookSet {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preinst: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub postinst: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prerm: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub postrm: Option<String>,
+}
 
-    for line in raw.lines() {
-        if line.starts_with(' ') || line.starts_with('\t') {
-            if let Some(val) = map.get_mut(&current_key) {
-                val.push('\n');
-                val.push_str(line.trim());
-            }
-        } else if let Some((key, value)) = line.split_once(':') {
-            current_key = key.trim().to_lowercase();
-            map.insert(current_key.clone(), value.trim().to_string());
+impl GpkgManifest {
+    #[allow(dead_code)]
+    pub fn empty() -> Self {
+        Self {
+            name: String::new(),
+            version: String::new(),
+            architecture: String::new(),
+            maintainer: String::new(),
+            description: String::new(),
+            dependencies: Vec::new(),
+            exec_binary: String::new(),
+            installed_files: Vec::new(),
+            hooks: HookSet::default(),
+            email: None,
+            github: None,
         }
     }
+}
+
+// ============================================================================
+// Debian `control` parser
+// ============================================================================
+pub fn parse_control(raw: &str) -> Result<GpkgManifest> {
+    let map = parse_rfc822(raw);
+
+    let name = map
+        .get("package")
+        .filter(|s| !s.is_empty())
+        .context("control: missing 'Package' field")?
+        .clone();
+
+    let version = map
+        .get("version")
+        .filter(|s| !s.is_empty())
+        .context("control: missing 'Version' field")?
+        .clone();
 
     let dependencies = map
         .get("depends")
-        .map(|d| parse_dependencies(d))
+        .map(|d| parse_deb_dependencies(d))
         .unwrap_or_default();
 
-    let name = map.remove("package").context("Missing 'Package' field")?;
-
     Ok(GpkgManifest {
-        exec_binary: name.clone(), // По умолчанию считаем бинарник равным имени пакета
+        exec_binary: name.clone(),
         name,
-        version: map.remove("version").context("Missing 'Version' field")?,
-        architecture: map.remove("architecture").unwrap_or_else(|| "all".to_string()),
-        maintainer: map.remove("maintainer").unwrap_or_default(),
-        description: map.remove("description").unwrap_or_default(),
+        version,
+        architecture: map
+            .get("architecture")
+            .cloned()
+            .unwrap_or_else(|| "all".to_string()),
+        maintainer: map.get("maintainer").cloned().unwrap_or_default(),
+        description: map.get("description").cloned().unwrap_or_default(),
         dependencies,
-        installed_files: Vec::new(), // Заполнится позже в main.rs
+        installed_files: Vec::new(),
+        hooks: HookSet::default(),
+        email: None,
+        github: None,
     })
 }
 
-fn parse_dependencies(raw: &str) -> Vec<String> {
+fn parse_deb_dependencies(raw: &str) -> Vec<String> {
     raw.split(',')
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .map(|s| {
+            let s = s.split(':').next().unwrap_or(s).trim();
             if let Some(idx) = s.find('(') {
                 s[..idx].trim().to_string()
             } else {
@@ -68,13 +113,60 @@ fn parse_dependencies(raw: &str) -> Vec<String> {
         .collect()
 }
 
+// ============================================================================
+// Shared RFC-822 parser
+// ============================================================================
+fn parse_rfc822(raw: &str) -> HashMap<String, String> {
+    let mut map: HashMap<String, String> = HashMap::new();
+    let mut current_key = String::new();
+
+    for line in raw.lines() {
+        if line.starts_with(' ') || line.starts_with('\t') {
+            if let Some(val) = map.get_mut(&current_key) {
+                val.push('\n');
+                val.push_str(line.trim_end());
+            }
+            continue;
+        }
+        if let Some((key, value)) = line.split_once(':') {
+            current_key = key.trim().to_lowercase();
+            map.insert(current_key.clone(), value.trim().to_string());
+        }
+    }
+    map
+}
+
+// ============================================================================
+// GPKGM Manifest Generator
+// ============================================================================
 pub fn write_manifest(staging: &Path, manifest: &GpkgManifest) -> Result<()> {
-    let manifest_path = staging.join("manifest.json");
-    let mut file = File::create(manifest_path).context("Failed to create manifest.json")?;
-    
-    let json = serde_json::to_string_pretty(manifest)?;
-    file.write_all(json.as_bytes())?;
-    file.flush()?; // Гарантируем сброс буфера на жесткий диск
-    
+    let manifest_path = staging.join("GPKGM");
+    let mut file = File::create(&manifest_path)
+        .with_context(|| format!("Failed to create GPKGM at {}", manifest_path.display()))?;
+
+    let mut content = format!(
+        "name={}\nversion={}\ndescription={}\nexec={}\nmaintainer={}\narchitecture={}\n",
+        manifest.name,
+        manifest.version,
+        manifest.description,
+        manifest.exec_binary,
+        manifest.maintainer,
+        manifest.architecture
+    );
+
+    if !manifest.dependencies.is_empty() {
+        content.push_str(&format!("dependencies={}\n", manifest.dependencies.join(", ")));
+    }
+
+    if let Some(ref email) = manifest.email {
+        content.push_str(&format!("email={}\n", email));
+    }
+
+    if let Some(ref github) = manifest.github {
+        content.push_str(&format!("github={}\n", github));
+    }
+
+    file.write_all(content.as_bytes())?;
+    file.flush()?;
     Ok(())
 }
